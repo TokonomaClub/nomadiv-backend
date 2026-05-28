@@ -88,8 +88,37 @@ Antworte in der Sprache des Gastes. Max 4 Sätze. Freundlich aber protokolltreu.
 }
 
 // ─── Route: Health Check ─────────────────────────────────────────────────────
-app.get("/", (req, res) => {
-  res.json({ status: "ok", service: "NOMAD.IV Lost & Found API" });
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "NOMAD.IV Lost & Found API",
+    anthropic_key: process.env.ANTHROPIC_API_KEY ? "gesetzt (" + process.env.ANTHROPIC_API_KEY.slice(0,12) + "...)" : "FEHLT!",
+    supabase_url: process.env.SUPABASE_URL || "FEHLT!",
+    supabase_key: process.env.SUPABASE_SERVICE_KEY ? "gesetzt" : "FEHLT!",
+  });
+});
+
+// ─── Route: Anthropic API Test ────────────────────────────────────────────────
+app.get("/api/test-claude", async (req, res) => {
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 50,
+        messages: [{ role: "user", content: "Sag nur: OK" }],
+      }),
+    });
+    const data = await response.json();
+    res.json({ success: !data.error, response: data.content?.[0]?.text || null, error: data.error || null });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
 });
 
 // ─── Route: Chat ─────────────────────────────────────────────────────────────
@@ -124,6 +153,11 @@ app.post("/api/chat", async (req, res) => {
     });
 
     const data = await response.json();
+    console.log("Claude API status:", response.status);
+    if (data.error) {
+      console.error("Claude API error:", JSON.stringify(data.error));
+      return res.json({ message: "Claude API Fehler: " + (data.error.message || JSON.stringify(data.error)) });
+    }
     const fullText = data.content?.map((i) => i.text || "").join("") || "";
 
     // ── REPORT parsen & speichern ──────────────────────────────────────────
@@ -311,6 +345,11 @@ app.post("/webhook/whatsapp", async (req, res) => {
     });
 
     const data = await response.json();
+    console.log("Claude API status:", response.status);
+    if (data.error) {
+      console.error("Claude API error:", JSON.stringify(data.error));
+      return res.json({ message: "Claude API Fehler: " + (data.error.message || JSON.stringify(data.error)) });
+    }
     const fullText = data.content?.map((i) => i.text || "").join("") || "";
 
     // REPORT speichern

@@ -1,10 +1,15 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
-app.use(express.json({ limit: "10mb" })); // 10mb für Foto-Uploads
-app.use(cors()); // In Produktion auf deine Domain einschränken
+app.use(express.json({ limit: "10mb" }));
+app.use(cors());
+
+// Statische HTML-Dateien (Chatbot + Admin)
+app.use(express.static(path.join(__dirname, "public")));
+app.get("/admin", (req, res) => res.sendFile(path.join(__dirname, "public", "admin.html")));
 
 // ─── Clients ────────────────────────────────────────────────────────────────
 const supabase = createClient(

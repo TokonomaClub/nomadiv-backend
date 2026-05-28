@@ -213,3 +213,170 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ NOMAD.IV Lost & Found Server läuft auf Port ${PORT}`);
 });
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WHATSAPP INTEGRATION (Meta Cloud API)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Session-Speicher (in Produktion: Redis oder Supabase-Tabelle)
+const sessions = new Map();
+
+function getSession(phone) {
+  if (!sessions.has(phone)) {
+    sessions.set(phone, { messages: [], suspicionLevel: 0 });
+  }
+  return sessions.get(phone);
+}
+
+async function sendWhatsAppMessage(to, text) {
+  await fetch(
+    `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "text",
+        text: { body: text },
+      }),
+    }
+  );
+}
+
+// Webhook Verification (Meta braucht das beim Setup)
+app.get("/webhook/whatsapp", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  if (mode === "subscribe" && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    console.log("✅ WhatsApp Webhook verifiziert");
+    res.status(200).send(challenge);
+  } else {
+    res.sendStatus(403);
+  }
+});
+
+// Eingehende WhatsApp Nachrichten
+app.post("/webhook/whatsapp", async (req, res) => {
+  res.sendStatus(200); // Meta sofort antworten
+
+  try {
+    const entry = req.body.entry?.[0];
+    const change = entry?.changes?.[0];
+    const message = change?.value?.messages?.[0];
+    if (!message || message.type !== "text") return;
+
+    const userPhone = message.from;
+    const userText = message.text.body;
+    const session = getSession(userPhone);
+
+    // Nachricht zur Session hinzufügen
+    session.messages.push({ role: "user", content: userText });
+
+    // Gleiche Backend-Logik wie Web-Chat
+    const [{ data: foundItems }, { data: lostReports }] = await Promise.all([
+      supabase.from("found_items").select("*").order("created_at", { ascending: false }),
+      supabase.from("lost_reports").select("*").order("created_at", { ascending: false }),
+    ]);
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        system: buildSystemPrompt(foundItems || [], lostReports || [], session.suspicionLevel),
+        messages: session.messages,
+      }),
+    });
+
+    const data = await response.json();
+    const fullText = data.content?.map((i) => i.text || "").join("") || "";
+
+    // REPORT speichern
+    const reportMatch = fullText.match(/REPORT:(\{[\s\S]*?\})/);
+    if (reportMatch) {
+      try {
+        const report = JSON.parse(reportMatch[1]);
+        await supabase.from("lost_reports").insert({
+          description: report.description,
+          contact: report.contact || userPhone,
+          date_lost: report.date,
+          status: "open",
+        });
+      } catch (e) {}
+    }
+
+    // SUSPICION tracken
+    const suspicionMatch = fullText.match(/SUSPICION:(\{[\s\S]*?\})/);
+    if (suspicionMatch) {
+      session.suspicionLevel = Math.min(session.suspicionLevel + 1, 3);
+      try {
+        const sus = JSON.parse(suspicionMatch[1]);
+        await supabase.from("security_events").insert({ reason: sus.reason, session_id: userPhone });
+      } catch (e) {}
+    }
+
+    // Antwort bereinigen
+    const reply = fullText
+      .replace(/REPORT:\{[\s\S]*?\}/, "")
+      .replace(/FOUND:\{[\s\S]*?\}/, "")
+      .replace(/SUSPICION:\{[\s\S]*?\}/, "")
+      .trim();
+
+    // Session aktualisieren
+    session.messages.push({ role: "assistant", content: reply });
+
+    // Antwort senden
+    await sendWhatsAppMessage(userPhone, reply);
+  } catch (err) {
+    console.error("WhatsApp webhook error:", err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADMIN API ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Einfacher Admin-Key Schutz
+function adminAuth(req, res, next) {
+  const key = req.headers["x-admin-key"];
+  if (key !== process.env.ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
+  next();
+}
+
+// Stats
+app.get("/admin/stats", adminAuth, async (req, res) => {
+  const [{ count: foundCount }, { count: lostCount }, { count: secCount }] = await Promise.all([
+    supabase.from("found_items").select("*", { count: "exact", head: true }),
+    supabase.from("lost_reports").select("*", { count: "exact", head: true }),
+    supabase.from("security_events").select("*", { count: "exact", head: true }),
+  ]);
+  res.json({ foundCount, lostCount, secCount });
+});
+
+// Item Status ändern
+app.patch("/admin/found/:id", adminAuth, async (req, res) => {
+  const { status } = req.body;
+  const { data, error } = await supabase
+    .from("found_items").update({ status }).eq("id", req.params.id).select().single();
+  if (error) return res.status(500).json({ error });
+  res.json(data);
+});
+
+app.patch("/admin/lost/:id", adminAuth, async (req, res) => {
+  const { status } = req.body;
+  const { data, error } = await supabase
+    .from("lost_reports").update({ status }).eq("id", req.params.id).select().single();
+  if (error) return res.status(500).json({ error });
+  res.json(data);
+});

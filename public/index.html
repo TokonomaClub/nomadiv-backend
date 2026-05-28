@@ -1,1 +1,306 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NOMAD.IV – Lost & Found</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #080808; }
+    #root { height: 100%; }
+    @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+    @keyframes fadeSlideIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.25); border-radius: 2px; }
+    textarea:focus, input:focus { outline: none; }
+    button { transition: all 0.15s; }
+    button:active { transform: scale(0.96); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
 
+  <script type="text/babel">
+    const { useState, useRef, useEffect } = React;
+
+    const BACKEND_URL = "";  // leer = gleicher Server
+
+    const today = new Date().toISOString().split("T")[0];
+
+    function TypingIndicator() {
+      return (
+        <div style={{ display:"flex", gap:5, alignItems:"center", padding:"14px 18px" }}>
+          {[0,1,2].map(i => (
+            <div key={i} style={{
+              width:7, height:7, borderRadius:"50%", background:"#C9A84C",
+              animation:"bounce 1.2s infinite", animationDelay:`${i*0.2}s`
+            }} />
+          ))}
+        </div>
+      );
+    }
+
+    function Message({ msg }) {
+      const isUser = msg.role === "user";
+      return (
+        <div style={{ display:"flex", justifyContent:isUser?"flex-end":"flex-start", marginBottom:14, animation:"fadeSlideIn 0.25s ease" }}>
+          {!isUser && (
+            <div style={{ width:32, height:32, borderRadius:"50%", background:"linear-gradient(135deg,#C9A84C,#8B6914)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#000", flexShrink:0, marginRight:10, alignSelf:"flex-end", fontFamily:"'Bebas Neue',cursive" }}>N</div>
+          )}
+          <div style={{ maxWidth:"75%", display:"flex", flexDirection:"column", alignItems:isUser?"flex-end":"flex-start", gap:6 }}>
+            {msg.imagePreview && (
+              <div style={{ borderRadius:isUser?"14px 14px 4px 14px":"14px 14px 14px 4px", overflow:"hidden", border:"2px solid rgba(201,168,76,0.3)", maxWidth:200 }}>
+                <img src={msg.imagePreview} alt="upload" style={{ width:"100%", display:"block" }} />
+              </div>
+            )}
+            {msg.content && (
+              <div style={{ padding:"12px 16px", borderRadius:isUser?"18px 18px 4px 18px":"18px 18px 18px 4px", background:isUser?"linear-gradient(135deg,#C9A84C,#A07830)":"rgba(255,255,255,0.06)", border:isUser?"none":"1px solid rgba(255,255,255,0.08)", color:isUser?"#000":"#e8e8e8", fontSize:14, lineHeight:1.6, fontFamily:"'DM Sans',sans-serif", fontWeight:isUser?600:400, whiteSpace:"pre-wrap" }}>
+                {msg.content}
+              </div>
+            )}
+            {msg.autoTagged && (
+              <div style={{ padding:"5px 11px", borderRadius:20, background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.25)", color:"#4ADE80", fontSize:10, fontFamily:"'DM Mono',monospace", display:"flex", alignItems:"center", gap:5 }}>
+                ✓ KI-Kategorisierung abgeschlossen
+              </div>
+            )}
+            {msg.securityEvent && (
+              <div style={{ padding:"5px 11px", borderRadius:20, background:"rgba(249,115,22,0.08)", border:"1px solid rgba(249,115,22,0.25)", color:"#F97316", fontSize:10, fontFamily:"'DM Mono',monospace" }}>
+                🔶 {msg.securityEvent}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function ItemBadge({ item }) {
+      const d = item.description?.toLowerCase() || "";
+      const emoji = d.includes("iphone")||d.includes("phone")?"📱":d.includes("geldbörse")?"👛":d.includes("schlüssel")?"🔑":d.includes("sonnenbrille")?"🕶️":d.includes("uhr")?"⌚":d.includes("rucksack")?"🎒":d.includes("tasse")?"☕":"📦";
+      return (
+        <div style={{ background:item.isNew?"rgba(74,222,128,0.05)":"rgba(201,168,76,0.04)", border:item.isNew?"1px solid rgba(74,222,128,0.2)":"1px solid rgba(201,168,76,0.15)", borderRadius:12, padding:"10px 14px", marginBottom:8, display:"flex", gap:12, alignItems:"center", animation:item.isNew?"fadeSlideIn 0.4s ease":"none" }}>
+          {item.photo ? <img src={item.photo} alt="" style={{ width:44, height:44, borderRadius:8, objectFit:"cover", flexShrink:0 }} /> : <div style={{ width:44, height:44, borderRadius:8, background:"rgba(201,168,76,0.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{emoji}</div>}
+          <div style={{ flex:1 }}>
+            <div style={{ color:"#e8e8e8", fontSize:13, fontWeight:600, fontFamily:"'DM Sans',sans-serif" }}>{item.description}</div>
+            <div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, marginTop:3, fontFamily:"'DM Mono',monospace" }}>{item.location} · {item.date}</div>
+          </div>
+          <div style={{ background:item.isNew?"rgba(74,222,128,0.2)":"rgba(201,168,76,0.12)", color:item.isNew?"#4ADE80":"#C9A84C", fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:20, fontFamily:"'DM Mono',monospace", letterSpacing:1, flexShrink:0 }}>#{item.id}</div>
+        </div>
+      );
+    }
+
+    function SecurityBadge({ level }) {
+      const cfg = level===0?{color:"#4ADE80",bg:"rgba(74,222,128,0.08)",border:"rgba(74,222,128,0.2)",icon:"🛡️",label:"GESCHÜTZT"}:level===1?{color:"#C9A84C",bg:"rgba(201,168,76,0.08)",border:"rgba(201,168,76,0.25)",icon:"⚠️",label:"PRÜFUNG"}:level===2?{color:"#F97316",bg:"rgba(249,115,22,0.08)",border:"rgba(249,115,22,0.25)",icon:"🔶",label:"VERDACHT"}:{color:"#EF4444",bg:"rgba(239,68,68,0.08)",border:"rgba(239,68,68,0.25)",icon:"🚫",label:"GESPERRT"};
+      return (
+        <div style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 10px", background:cfg.bg, border:`1px solid ${cfg.border}`, borderRadius:20 }}>
+          <span style={{ fontSize:10 }}>{cfg.icon}</span>
+          <span style={{ fontSize:9, color:cfg.color, fontFamily:"'DM Mono',monospace", letterSpacing:1, fontWeight:600 }}>{cfg.label}</span>
+        </div>
+      );
+    }
+
+    function App() {
+      const [messages, setMessages] = useState([{ role:"assistant", content:"Hey 👋 Willkommen beim NOMAD.IV Lost & Found.\n\nHast du etwas verloren? Beschreib es bitte so genau wie möglich – Farbe, Marke und Besonderheiten helfen am meisten. Du kannst auch ein Foto hochladen 📷" }]);
+      const [input, setInput] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [foundItems, setFoundItems] = useState([]);
+      const [lostReports, setLostReports] = useState([]);
+      const [suspicionLevel, setSuspicionLevel] = useState(0);
+      const [securityLog, setSecurityLog] = useState([]);
+      const [activeTab, setActiveTab] = useState("chat");
+      const [newFoundCount, setNewFoundCount] = useState(0);
+      const [pendingImage, setPendingImage] = useState(null);
+      const messagesEndRef = useRef(null);
+      const inputRef = useRef(null);
+      const fileInputRef = useRef(null);
+
+      useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, loading]);
+
+      // Items beim Start laden
+      useEffect(() => {
+        fetch(`${BACKEND_URL}/api/items/found`).then(r=>r.json()).then(data => {
+          if (Array.isArray(data)) setFoundItems(data.map(i => ({ id:i.id, description:i.description, location:i.location, date:i.date_found, photo:i.photo_url, status:i.status })));
+        }).catch(()=>{});
+      }, []);
+
+      const handleFileSelect = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const result = ev.target.result;
+          setPendingImage({ base64:result.split(",")[1], preview:result, mediaType:file.type||"image/jpeg" });
+        };
+        reader.readAsDataURL(file);
+        e.target.value = "";
+      };
+
+      const buildApiMessages = (msgs) => msgs.map(m => {
+        if (m.imageData) {
+          return { role:m.role, content:[{ type:"image", source:{ type:"base64", media_type:m.imageData.mediaType, data:m.imageData.base64 }}, { type:"text", text:m.content||"Ich habe dieses Foto hochgeladen." }]};
+        }
+        return { role:m.role, content:m.content };
+      });
+
+      const sendMessage = async (overrideText) => {
+        const text = (overrideText||input).trim();
+        if ((!text && !pendingImage)||loading) return;
+        const userMsg = { role:"user", content:text||"", imagePreview:pendingImage?.preview||null, imageData:pendingImage?{ base64:pendingImage.base64, mediaType:pendingImage.mediaType }:null };
+        const newMessages = [...messages, userMsg];
+        setMessages(newMessages);
+        setInput("");
+        setPendingImage(null);
+        setLoading(true);
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/chat`, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json", "x-session-id": sessionStorage.getItem("lf-session")||Math.random().toString(36).slice(2) },
+            body:JSON.stringify({ messages:buildApiMessages(newMessages), suspicionLevel })
+          });
+          const data = await res.json();
+          let securityEvent = null;
+          let autoTagged = false;
+          if (data.newFoundItem) {
+            setFoundItems(prev => [{ id:data.newFoundItem.id, description:data.newFoundItem.description, location:data.newFoundItem.location||"Unbekannt", date:data.newFoundItem.date_found||today, status:"unclaimed", photo:data.newFoundItem.has_photo&&userMsg.imagePreview?userMsg.imagePreview:null, isNew:true }, ...prev]);
+            setNewFoundCount(n=>n+1);
+            autoTagged = true;
+          }
+          if (data.suspicionEvent) {
+            setSuspicionLevel(l=>Math.min(l+1,3));
+            setSecurityLog(prev=>[...prev,{ reason:data.suspicionEvent.reason, time:new Date().toLocaleTimeString("de-DE") }]);
+            securityEvent = data.suspicionEvent.reason;
+          }
+          if (data.reportSaved) setLostReports(prev=>[...prev,{ id:Date.now(), description:"Neue Meldung gespeichert", date:today }]);
+          setMessages(prev=>[...prev,{ role:"assistant", content:data.message||"Fehler", autoTagged, securityEvent }]);
+        } catch(err) {
+          setMessages(prev=>[...prev,{ role:"assistant", content:"Entschuldigung, da ist etwas schiefgelaufen." }]);
+        }
+        setLoading(false);
+        inputRef.current?.focus();
+      };
+
+      const tabs = [
+        { id:"chat", label:"💬 Chat" },
+        { id:"found", label:`📦 Gefunden (${foundItems.length})`, badge:newFoundCount },
+        { id:"lost", label:`📋 Gemeldet (${lostReports.length})` },
+        { id:"security", label:"🛡️ Security", badge:securityLog.length, alert:suspicionLevel>=2 },
+      ];
+
+      return (
+        <div style={{ minHeight:"100vh", background:"#080808", display:"flex", alignItems:"center", justifyContent:"center", padding:20, fontFamily:"'DM Sans',sans-serif", position:"relative" }}>
+          <div style={{ position:"fixed", inset:0, pointerEvents:"none", background:"radial-gradient(ellipse at 15% 15%, rgba(201,168,76,0.05) 0%, transparent 55%)" }} />
+          <div style={{ width:"100%", maxWidth:460, background:"rgba(10,10,10,0.97)", border:`1px solid ${suspicionLevel>=2?"rgba(249,115,22,0.3)":"rgba(201,168,76,0.18)"}`, borderRadius:22, overflow:"hidden", boxShadow:"0 0 60px rgba(201,168,76,0.06), 0 30px 80px rgba(0,0,0,0.9)", position:"relative", zIndex:1 }}>
+
+            {/* Header */}
+            <div style={{ padding:"20px 22px 14px", borderBottom:"1px solid rgba(255,255,255,0.05)", background:"rgba(0,0,0,0.5)" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  <div style={{ width:44, height:44, borderRadius:13, background:"linear-gradient(135deg,#C9A84C,#6B4A10)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, color:"#000", fontFamily:"'Bebas Neue',cursive", letterSpacing:1, boxShadow:"0 4px 16px rgba(201,168,76,0.25)" }}>N</div>
+                  <div>
+                    <div style={{ fontFamily:"'Bebas Neue',cursive", fontSize:22, color:"#fff", letterSpacing:2.5, lineHeight:1 }}>NOMAD.IV</div>
+                    <div style={{ fontSize:10, color:"rgba(201,168,76,0.7)", fontFamily:"'DM Mono',monospace", letterSpacing:2, marginTop:2 }}>LOST & FOUND · FRANKFURT</div>
+                  </div>
+                </div>
+                <SecurityBadge level={suspicionLevel} />
+              </div>
+              <div style={{ display:"flex", gap:3 }}>
+                {tabs.map(tab => (
+                  <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{ flex:1, padding:"7px 2px", background:activeTab===tab.id?(tab.alert?"rgba(249,115,22,0.1)":"rgba(201,168,76,0.1)"):"transparent", border:activeTab===tab.id?(tab.alert?"1px solid rgba(249,115,22,0.35)":"1px solid rgba(201,168,76,0.3)"):"1px solid rgba(255,255,255,0.05)", borderRadius:8, cursor:"pointer", color:activeTab===tab.id?(tab.alert?"#F97316":"#C9A84C"):"rgba(255,255,255,0.28)", fontSize:10, fontFamily:"'DM Mono',monospace", position:"relative", whiteSpace:"nowrap" }}>
+                    {tab.label}
+                    {tab.badge>0&&<div style={{ position:"absolute", top:-5, right:-3, width:16, height:16, borderRadius:"50%", background:tab.alert?"#F97316":"#4ADE80", color:"#000", fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{tab.badge}</div>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Chat Tab */}
+            {activeTab==="chat" && (<>
+              <div style={{ height:360, overflowY:"auto", padding:"16px 16px 6px" }}>
+                {messages.map((msg,i) => <Message key={i} msg={msg} />)}
+                {loading && (
+                  <div style={{ display:"flex", justifyContent:"flex-start", marginBottom:14 }}>
+                    <div style={{ width:32, height:32, borderRadius:"50%", background:"linear-gradient(135deg,#C9A84C,#8B6914)", display:"flex", alignItems:"center", justifyContent:"center", color:"#000", fontFamily:"'Bebas Neue',cursive", fontSize:13, flexShrink:0, marginRight:10, alignSelf:"flex-end" }}>N</div>
+                    <div style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:"18px 18px 18px 4px" }}><TypingIndicator /></div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+              {messages.length<=2&&(
+                <div style={{ padding:"0 16px 10px", display:"flex", flexWrap:"wrap", gap:6 }}>
+                  {["Ich habe etwas verloren","Gegenstand melden 📷","Öffnungszeiten?"].map(a=>(
+                    <button key={a} onClick={()=>a.includes("📷")?fileInputRef.current?.click():sendMessage(a)} style={{ padding:"6px 12px", background:"rgba(201,168,76,0.07)", border:"1px solid rgba(201,168,76,0.2)", borderRadius:20, cursor:"pointer", color:"rgba(201,168,76,0.8)", fontSize:12 }}>{a}</button>
+                  ))}
+                </div>
+              )}
+              {pendingImage&&(
+                <div style={{ margin:"0 16px 10px", padding:"10px 12px", background:"rgba(201,168,76,0.07)", border:"1px solid rgba(201,168,76,0.2)", borderRadius:12, display:"flex", alignItems:"center", gap:10, animation:"fadeSlideIn 0.2s ease" }}>
+                  <img src={pendingImage.preview} alt="" style={{ width:44, height:44, borderRadius:8, objectFit:"cover" }} />
+                  <div style={{ flex:1 }}><div style={{ color:"#C9A84C", fontSize:12, fontWeight:600 }}>Foto bereit</div><div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, fontFamily:"'DM Mono',monospace" }}>KI analysiert automatisch</div></div>
+                  <button onClick={()=>setPendingImage(null)} style={{ background:"rgba(255,255,255,0.06)", border:"none", color:"rgba(255,255,255,0.35)", borderRadius:6, width:26, height:26, cursor:"pointer" }}>✕</button>
+                </div>
+              )}
+              <div style={{ padding:"10px 16px 16px", borderTop:"1px solid rgba(255,255,255,0.05)" }}>
+                <div style={{ display:"flex", gap:8, alignItems:"flex-end", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:13, padding:"9px 11px" }}>
+                  <button onClick={()=>fileInputRef.current?.click()} style={{ width:32, height:32, borderRadius:8, flexShrink:0, background:pendingImage?"rgba(201,168,76,0.18)":"rgba(255,255,255,0.05)", border:pendingImage?"1px solid rgba(201,168,76,0.35)":"1px solid rgba(255,255,255,0.07)", cursor:"pointer", fontSize:15, display:"flex", alignItems:"center", justifyContent:"center", color:pendingImage?"#C9A84C":"rgba(255,255,255,0.3)" }}>📷</button>
+                  <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}} placeholder={pendingImage?"Optionaler Text...":"Beschreib deinen Gegenstand genau..."} rows={1} style={{ flex:1, background:"transparent", border:"none", resize:"none", color:"#e8e8e8", fontSize:14, fontFamily:"'DM Sans',sans-serif", lineHeight:1.5, maxHeight:80 }} />
+                  <button onClick={()=>sendMessage()} disabled={(!input.trim()&&!pendingImage)||loading} style={{ width:32, height:32, borderRadius:8, flexShrink:0, background:(input.trim()||pendingImage)&&!loading?"linear-gradient(135deg,#C9A84C,#A07830)":"rgba(255,255,255,0.04)", border:"none", cursor:(input.trim()||pendingImage)&&!loading?"pointer":"default", color:(input.trim()||pendingImage)&&!loading?"#000":"rgba(255,255,255,0.15)", fontSize:15, display:"flex", alignItems:"center", justifyContent:"center" }}>↑</button>
+                </div>
+                <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*" style={{ display:"none" }} />
+                <div style={{ textAlign:"center", marginTop:8, fontSize:10, color:"rgba(255,255,255,0.12)", fontFamily:"'DM Mono',monospace" }}>Mindestens 3 spezifische Details erforderlich</div>
+              </div>
+            </>)}
+
+            {/* Gefunden Tab */}
+            {activeTab==="found"&&(
+              <div style={{ padding:18, height:490, overflowY:"auto" }}>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.22)", fontFamily:"'DM Mono',monospace", letterSpacing:2, marginBottom:14 }}>GEFUNDENE GEGENSTÄNDE — {foundItems.length} ITEMS</div>
+                {foundItems.map(item=><ItemBadge key={item.id} item={item} />)}
+                <div style={{ marginTop:14, padding:"12px 14px", background:"rgba(201,168,76,0.04)", border:"1px solid rgba(201,168,76,0.1)", borderRadius:10, fontSize:12, color:"rgba(255,255,255,0.3)", lineHeight:1.7 }}>
+                  📍 Abholung zu regulären Öffnungszeiten oder 30 Min. davor<br/>
+                  📧 info@tokonoma.club · 🪪 Ausweis Pflicht
+                </div>
+              </div>
+            )}
+
+            {/* Gemeldet Tab */}
+            {activeTab==="lost"&&(
+              <div style={{ padding:18, height:490, overflowY:"auto" }}>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.22)", fontFamily:"'DM Mono',monospace", letterSpacing:2, marginBottom:14 }}>VERLUST-MELDUNGEN — {lostReports.length} REGISTRIERT</div>
+                {lostReports.length===0?<div style={{ textAlign:"center", padding:"50px 20px", color:"rgba(255,255,255,0.18)", fontSize:13 }}><div style={{ fontSize:36, marginBottom:12 }}>📋</div>Noch keine Meldungen.</div>:lostReports.map(r=><div key={r.id} style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10, padding:"12px 14px", marginBottom:8 }}><div style={{ color:"#e8e8e8", fontSize:13, fontWeight:600 }}>{r.description}</div><div style={{ color:"rgba(255,255,255,0.28)", fontSize:11, marginTop:4, fontFamily:"'DM Mono',monospace" }}>{r.date} · {r.contact}</div></div>)}
+              </div>
+            )}
+
+            {/* Security Tab */}
+            {activeTab==="security"&&(
+              <div style={{ padding:18, height:490, overflowY:"auto" }}>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.22)", fontFamily:"'DM Mono',monospace", letterSpacing:2, marginBottom:14 }}>SICHERHEITS-LOG</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
+                  {[{l:"Verdachtslevel",v:`${suspicionLevel}/3`,c:suspicionLevel===0?"#4ADE80":suspicionLevel<=1?"#C9A84C":"#EF4444"},{l:"Ereignisse",v:securityLog.length,c:securityLog.length===0?"#4ADE80":"#F97316"},{l:"Schutzregeln",v:"5 aktiv",c:"#4ADE80"},{l:"Inventar-Schutz",v:"🔒 AN",c:"#4ADE80"}].map(s=>(
+                    <div key={s.l} style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10, padding:"12px 14px" }}>
+                      <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10, fontFamily:"'DM Mono',monospace", marginBottom:4 }}>{s.l}</div>
+                      <div style={{ color:s.c, fontSize:18, fontWeight:700, fontFamily:"'Bebas Neue',cursive", letterSpacing:1 }}>{s.v}</div>
+                    </div>
+                  ))}
+                </div>
+                {securityLog.map((e,i)=>(
+                  <div key={i} style={{ background:"rgba(249,115,22,0.05)", border:"1px solid rgba(249,115,22,0.2)", borderRadius:10, padding:"10px 14px", marginBottom:8 }}>
+                    <div style={{ color:"#F97316", fontSize:12, fontWeight:600 }}>🔶 Verdachtsereignis #{i+1}</div>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:3, fontFamily:"'DM Mono',monospace" }}>{e.reason} · {e.time}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

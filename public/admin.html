@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NOMAD.IV – Admin</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #080808; }
+    #root { height: 100%; }
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.2); border-radius: 2px; }
+    input:focus, select:focus { outline: none; }
+    button { transition: all 0.15s; cursor: pointer; }
+    button:active { transform: scale(0.97); }
+    @keyframes fadeSlideIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const BACKEND_URL = "";
+
+    async function api(path, adminKey, options={}) {
+      const res = await fetch(`${BACKEND_URL}${path}`, {
+        ...options,
+        headers:{ "Content-Type":"application/json", "x-admin-key":adminKey, ...(options.headers||{}) }
+      });
+      return res.json();
+    }
+
+    const FOUND_STATUSES = {
+      unclaimed:{ label:"Vorhanden", color:"#4ADE80", bg:"rgba(74,222,128,0.1)", border:"rgba(74,222,128,0.25)" },
+      claimed:  { label:"Abgeholt",  color:"#C9A84C", bg:"rgba(201,168,76,0.1)", border:"rgba(201,168,76,0.25)" },
+      disposed: { label:"Entsorgt",  color:"#6B7280", bg:"rgba(107,114,128,0.1)", border:"rgba(107,114,128,0.2)" },
+    };
+    const LOST_STATUSES = {
+      open:    { label:"Offen",        color:"#60A5FA", bg:"rgba(96,165,250,0.1)",  border:"rgba(96,165,250,0.25)" },
+      matched: { label:"Match",        color:"#C9A84C", bg:"rgba(201,168,76,0.1)", border:"rgba(201,168,76,0.25)" },
+      closed:  { label:"Geschlossen",  color:"#6B7280", bg:"rgba(107,114,128,0.1)", border:"rgba(107,114,128,0.2)" },
+    };
+
+    function StatusPill({ status, statuses }) {
+      const s = statuses[status]||Object.values(statuses)[0];
+      return <span style={{ padding:"3px 10px", borderRadius:20, fontSize:10, fontWeight:700, color:s.color, background:s.bg, border:`1px solid ${s.border}`, fontFamily:"'DM Mono',monospace", letterSpacing:1 }}>{s.label}</span>;
+    }
+
+    function StatCard({ icon, value, label, color="#C9A84C" }) {
+      return (
+        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:14, padding:"18px 20px", display:"flex", flexDirection:"column", gap:6 }}>
+          <div style={{ fontSize:22 }}>{icon}</div>
+          <div style={{ fontSize:28, fontWeight:700, color, fontFamily:"'Bebas Neue',cursive", letterSpacing:2 }}>{value}</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", fontFamily:"'DM Mono',monospace", letterSpacing:1 }}>{label}</div>
+        </div>
+      );
+    }
+
+    function ItemRow({ item, type, adminKey, onUpdate }) {
+      const statuses = type==="found"?FOUND_STATUSES:LOST_STATUSES;
+      const [updating, setUpdating] = useState(false);
+      const nextMap = { found:{unclaimed:"claimed",claimed:"disposed",disposed:"unclaimed"}, lost:{open:"matched",matched:"closed",closed:"open"} };
+      const d = item.description?.toLowerCase()||"";
+      const emoji = d.includes("iphone")||d.includes("phone")?"📱":d.includes("geldbörse")?"👛":d.includes("schlüssel")?"🔑":d.includes("sonnenbrille")?"🕶️":d.includes("uhr")?"⌚":d.includes("rucksack")?"🎒":"📦";
+
+      const handleStatusChange = async () => {
+        setUpdating(true);
+        const next = nextMap[type][item.status]||Object.keys(statuses)[0];
+        const updated = await api(`/admin/${type}/${item.id}`, adminKey, { method:"PATCH", body:JSON.stringify({ status:next }) });
+        onUpdate(updated);
+        setUpdating(false);
+      };
+
+      return (
+        <div style={{ display:"grid", gridTemplateColumns:"36px 1fr auto auto", gap:12, alignItems:"center", padding:"12px 16px", borderBottom:"1px solid rgba(255,255,255,0.04)", transition:"background 0.15s" }}
+          onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.02)"}
+          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          <div style={{ width:36, height:36, borderRadius:9, background:"rgba(255,255,255,0.05)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>
+            {item.photo_url?<img src={item.photo_url} alt="" style={{ width:36, height:36, borderRadius:9, objectFit:"cover" }} />:emoji}
+          </div>
+          <div>
+            <div style={{ color:"#e8e8e8", fontSize:13, fontWeight:600, fontFamily:"'DM Sans',sans-serif" }}>{item.description}</div>
+            <div style={{ color:"rgba(255,255,255,0.28)", fontSize:11, marginTop:2, fontFamily:"'DM Mono',monospace" }}>
+              {type==="found"?`${item.location||"—"} · ${item.date_found||"—"}`:`${item.contact||"kein Kontakt"} · ${item.date_lost||"—"}`}
+            </div>
+          </div>
+          <StatusPill status={item.status} statuses={statuses} />
+          <button onClick={handleStatusChange} disabled={updating} style={{ padding:"5px 10px", borderRadius:7, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.5)", fontSize:11, fontFamily:"'DM Mono',monospace", opacity:updating?0.5:1 }}>
+            {updating?"...":"→"}
+          </button>
+        </div>
+      );
+    }
+
+    function App() {
+      const [adminKey, setAdminKey] = useState("");
+      const [authed, setAuthed] = useState(false);
+      const [authError, setAuthError] = useState(false);
+      const [activeTab, setActiveTab] = useState("found");
+      const [foundItems, setFoundItems] = useState([]);
+      const [lostReports, setLostReports] = useState([]);
+      const [securityEvents, setSecurityEvents] = useState([]);
+      const [stats, setStats] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [filter, setFilter] = useState("all");
+      const [search, setSearch] = useState("");
+      const [lastRefresh, setLastRefresh] = useState(null);
+
+      const login = async () => {
+        setLoading(true);
+        try {
+          const result = await api("/admin/stats", adminKey);
+          if (result.error) { setAuthError(true); setLoading(false); return; }
+          setStats(result);
+          setAuthed(true);
+          loadAll(adminKey);
+        } catch { setAuthError(true); }
+        setLoading(false);
+      };
+
+      const loadAll = async (key=adminKey) => {
+        setLoading(true);
+        const [found, lost, st] = await Promise.all([
+          api("/api/items/found", key),
+          api("/api/items/lost", key),
+          api("/admin/stats", key),
+        ]);
+        if (Array.isArray(found)) setFoundItems(found);
+        if (Array.isArray(lost)) setLostReports(lost);
+        if (st&&!st.error) setStats(st);
+        setLastRefresh(new Date());
+        setLoading(false);
+      };
+
+      const filtered = (items) => items.filter(i => {
+        const mf = filter==="all"||i.status===filter;
+        const ms = !search||i.description?.toLowerCase().includes(search.toLowerCase())||(i.location||i.contact||"").toLowerCase().includes(search.toLowerCase());
+        return mf&&ms;
+      });
+
+      if (!authed) return (
+        <div style={{ minHeight:"100vh", background:"#080808", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',sans-serif" }}>
+          <div style={{ width:360, background:"rgba(12,12,12,0.98)", border:"1px solid rgba(201,168,76,0.2)", borderRadius:20, padding:36, textAlign:"center", boxShadow:"0 0 60px rgba(201,168,76,0.06), 0 30px 80px rgba(0,0,0,0.9)" }}>
+            <div style={{ width:56, height:56, borderRadius:16, margin:"0 auto 20px", background:"linear-gradient(135deg,#C9A84C,#6B4A10)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, fontFamily:"'Bebas Neue',cursive", color:"#000", boxShadow:"0 4px 20px rgba(201,168,76,0.3)" }}>N</div>
+            <div style={{ fontFamily:"'Bebas Neue',cursive", fontSize:26, color:"#fff", letterSpacing:3 }}>NOMAD.IV</div>
+            <div style={{ fontSize:11, color:"rgba(201,168,76,0.6)", fontFamily:"'DM Mono',monospace", letterSpacing:2, marginTop:4, marginBottom:32 }}>ADMIN DASHBOARD</div>
+            <input type="password" placeholder="Admin Key eingeben..." value={adminKey} onChange={e=>{setAdminKey(e.target.value);setAuthError(false);}} onKeyDown={e=>e.key==="Enter"&&login()}
+              style={{ width:"100%", padding:"12px 16px", background:"rgba(255,255,255,0.04)", border:`1px solid ${authError?"rgba(239,68,68,0.5)":"rgba(255,255,255,0.1)"}`, borderRadius:10, color:"#e8e8e8", fontSize:14, fontFamily:"'DM Mono',monospace", marginBottom:10 }} />
+            {authError&&<div style={{ color:"#EF4444", fontSize:12, marginBottom:10, fontFamily:"'DM Mono',monospace" }}>✕ Falscher Admin Key</div>}
+            <button onClick={login} disabled={!adminKey||loading} style={{ width:"100%", padding:12, background:adminKey?"linear-gradient(135deg,#C9A84C,#A07830)":"rgba(255,255,255,0.05)", border:"none", borderRadius:10, color:adminKey?"#000":"rgba(255,255,255,0.2)", fontSize:14, fontWeight:700, fontFamily:"'DM Sans',sans-serif", boxShadow:adminKey?"0 4px 16px rgba(201,168,76,0.25)":"none" }}>
+              {loading?"Prüfe...":"Einloggen →"}
+            </button>
+            <div style={{ marginTop:20, fontSize:11, color:"rgba(255,255,255,0.15)", fontFamily:"'DM Mono',monospace" }}>ADMIN_KEY in Railway Variables setzen</div>
+          </div>
+        </div>
+      );
+
+      const tabs = [
+        { id:"found",    label:"📦 Gefunden",  count:foundItems.filter(i=>i.status==="unclaimed").length },
+        { id:"lost",     label:"📋 Gemeldet",  count:lostReports.filter(i=>i.status==="open").length },
+        { id:"security", label:"🛡️ Security",  count:securityEvents.length },
+      ];
+
+      return (
+        <div style={{ minHeight:"100vh", background:"#080808", fontFamily:"'DM Sans',sans-serif" }}>
+          {/* Topbar */}
+          <div style={{ borderBottom:"1px solid rgba(255,255,255,0.06)", background:"rgba(0,0,0,0.6)", padding:"14px 28px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100, backdropFilter:"blur(10px)" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+              <div style={{ width:38, height:38, borderRadius:10, background:"linear-gradient(135deg,#C9A84C,#6B4A10)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:"#000", fontFamily:"'Bebas Neue',cursive" }}>N</div>
+              <div>
+                <div style={{ fontFamily:"'Bebas Neue',cursive", fontSize:18, color:"#fff", letterSpacing:2.5, lineHeight:1 }}>NOMAD.IV</div>
+                <div style={{ fontSize:9, color:"rgba(201,168,76,0.6)", fontFamily:"'DM Mono',monospace", letterSpacing:2 }}>LOST & FOUND ADMIN</div>
+              </div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              {lastRefresh&&<span style={{ fontSize:10, color:"rgba(255,255,255,0.2)", fontFamily:"'DM Mono',monospace" }}>↻ {lastRefresh.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})}</span>}
+              <button onClick={()=>loadAll()} disabled={loading} style={{ padding:"6px 14px", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color:"rgba(255,255,255,0.5)", fontSize:12, fontFamily:"'DM Mono',monospace", opacity:loading?0.5:1 }}>Reload</button>
+              <a href="/" style={{ padding:"6px 14px", background:"rgba(201,168,76,0.08)", border:"1px solid rgba(201,168,76,0.2)", borderRadius:8, color:"rgba(201,168,76,0.7)", fontSize:12, fontFamily:"'DM Mono',monospace", textDecoration:"none" }}>→ Chatbot</a>
+              <button onClick={()=>setAuthed(false)} style={{ padding:"6px 14px", background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, color:"rgba(239,68,68,0.7)", fontSize:12, fontFamily:"'DM Mono',monospace" }}>Logout</button>
+            </div>
+          </div>
+
+          <div style={{ maxWidth:960, margin:"0 auto", padding:"28px 20px" }}>
+            {/* Stats */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:28, animation:"fadeSlideIn 0.3s ease" }}>
+              <StatCard icon="📦" value={stats?.foundCount??"—"} label="GEFUNDEN TOTAL" />
+              <StatCard icon="✅" value={foundItems.filter(i=>i.status==="unclaimed").length} label="NOCH VORHANDEN" color="#4ADE80" />
+              <StatCard icon="📋" value={lostReports.filter(i=>i.status==="open").length} label="OFFENE MELDUNGEN" color="#60A5FA" />
+              <StatCard icon="🔶" value={stats?.secCount??"—"} label="SECURITY EVENTS" color="#F97316" />
+            </div>
+
+            {/* Panel */}
+            <div style={{ background:"rgba(12,12,12,0.95)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:18, overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.5)" }}>
+              {/* Tabs + Search */}
+              <div style={{ padding:"16px 20px", borderBottom:"1px solid rgba(255,255,255,0.06)", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", background:"rgba(0,0,0,0.3)" }}>
+                <div style={{ display:"flex", gap:4, flex:1 }}>
+                  {tabs.map(tab=>(
+                    <button key={tab.id} onClick={()=>{setActiveTab(tab.id);setFilter("all");setSearch("");}}
+                      style={{ padding:"7px 14px", background:activeTab===tab.id?"rgba(201,168,76,0.12)":"transparent", border:activeTab===tab.id?"1px solid rgba(201,168,76,0.3)":"1px solid rgba(255,255,255,0.06)", borderRadius:8, color:activeTab===tab.id?"#C9A84C":"rgba(255,255,255,0.3)", fontSize:12, fontFamily:"'DM Mono',monospace" }}>
+                      {tab.label}
+                      {tab.count>0&&<span style={{ marginLeft:6, background:activeTab===tab.id?"#C9A84C":"rgba(255,255,255,0.15)", color:activeTab===tab.id?"#000":"rgba(255,255,255,0.5)", fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:10 }}>{tab.count}</span>}
+                    </button>
+                  ))}
+                </div>
+                {activeTab!=="security"&&(<>
+                  <input placeholder="Suchen..." value={search} onChange={e=>setSearch(e.target.value)} style={{ padding:"7px 12px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:8, color:"#e8e8e8", fontSize:12, width:160 }} />
+                  <select value={filter} onChange={e=>setFilter(e.target.value)} style={{ padding:"7px 10px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:8, color:"rgba(255,255,255,0.5)", fontSize:11, fontFamily:"'DM Mono',monospace" }}>
+                    <option value="all">Alle Status</option>
+                    {Object.entries(activeTab==="found"?FOUND_STATUSES:LOST_STATUSES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </>)}
+              </div>
+
+              {/* Table Header */}
+              {activeTab!=="security"&&(
+                <div style={{ display:"grid", gridTemplateColumns:"36px 1fr auto auto", gap:12, padding:"8px 16px", borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
+                  {["","Beschreibung / Details","Status","Aktion"].map((h,i)=><div key={i} style={{ fontSize:9, color:"rgba(255,255,255,0.2)", fontFamily:"'DM Mono',monospace", letterSpacing:1.5 }}>{h}</div>)}
+                </div>
+              )}
+
+              {/* Rows */}
+              <div style={{ maxHeight:480, overflowY:"auto" }}>
+                {activeTab==="found"&&(filtered(foundItems).length===0
+                  ?<div style={{ padding:"40px 20px", textAlign:"center", color:"rgba(255,255,255,0.2)", fontSize:13 }}>Keine Items</div>
+                  :filtered(foundItems).map(item=><ItemRow key={item.id} item={item} type="found" adminKey={adminKey} onUpdate={u=>setFoundItems(p=>p.map(i=>i.id===u.id?u:i))} />)
+                )}
+                {activeTab==="lost"&&(filtered(lostReports).length===0
+                  ?<div style={{ padding:"40px 20px", textAlign:"center", color:"rgba(255,255,255,0.2)", fontSize:13 }}>Keine Meldungen</div>
+                  :filtered(lostReports).map(item=><ItemRow key={item.id} item={item} type="lost" adminKey={adminKey} onUpdate={u=>setLostReports(p=>p.map(i=>i.id===u.id?u:i))} />)
+                )}
+                {activeTab==="security"&&(securityEvents.length===0
+                  ?<div style={{ padding:"40px 20px", textAlign:"center", color:"rgba(255,255,255,0.2)", fontSize:13 }}><div style={{ fontSize:32, marginBottom:10 }}>🛡️</div>Keine Ereignisse</div>
+                  :securityEvents.map((e,i)=><div key={i} style={{ padding:"10px 16px", borderBottom:"1px solid rgba(255,255,255,0.04)", display:"grid", gridTemplateColumns:"20px 1fr auto", gap:12, alignItems:"center" }}><span>🔶</span><div style={{ color:"rgba(255,255,255,0.55)", fontSize:12 }}>{e.reason}</div><div style={{ color:"rgba(255,255,255,0.2)", fontSize:10, fontFamily:"'DM Mono',monospace", whiteSpace:"nowrap" }}>{new Date(e.created_at).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</div></div>)
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding:"10px 20px", borderTop:"1px solid rgba(255,255,255,0.04)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.15)", fontFamily:"'DM Mono',monospace" }}>
+                  {activeTab==="found"?`${filtered(foundItems).length} Items`:activeTab==="lost"?`${filtered(lostReports).length} Meldungen`:`${securityEvents.length} Events`}
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <div style={{ width:6, height:6, borderRadius:"50%", background:"#4ADE80", animation:"pulse 2s infinite" }} />
+                  <span style={{ fontSize:10, color:"rgba(255,255,255,0.2)", fontFamily:"'DM Mono',monospace" }}>Live · Supabase</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
